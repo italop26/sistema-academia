@@ -1,0 +1,39 @@
+:root { font-family: Inter, "Segoe UI", sans-serif; color: #18342f; background: #f4f5ef; font-synthesis: none; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+.shell { width: min(960px, calc(100% - 48px)); margin: 0 auto; }
+.brand { display: flex; gap: 12px; align-items: center; padding: 34px 0; font-weight: 650; letter-spacing: -.3px; }
+.brand-mark { display: grid; place-items: center; width: 34px; height: 34px; background: #18342f; color: #d7f1b6; border-radius: 10px; font-size: 21px; }
+.intro { padding: 60px 0 34px; max-width: 650px; }
+.eyebrow { font-size: 11px; font-weight: 700; letter-spacing: 2px; color: #5b7060; margin: 0 0 16px; }
+h1 { font-size: clamp(36px, 6vw, 60px); line-height: 1.08; letter-spacing: -2.5px; margin: 0 0 24px; font-weight: 600; }
+.description { color: #5f6e66; font-size: 17px; line-height: 1.7; max-width: 540px; }
+.status-card { background: #fff; border: 1px solid #dde3d9; border-radius: 18px; padding: 30px; margin: 10px 0 50px; }
+.status-heading { display: flex; justify-content: space-between; align-items: center; gap: 20px; }
+.status-heading .eyebrow { margin-bottom: 8px; }
+h2 { font-size: 22px; margin: 0; font-weight: 600; letter-spacing: -.5px; }
+.badge { background: #f2f2ed; color: #605d45; border-radius: 20px; padding: 9px 13px; font-size: 12px; }
+.badge.available { background: #ecf5e3; color: #355b25; }
+dl { margin: 28px 0 16px; }
+dl div { display: flex; justify-content: space-between; padding: 16px 0; border-bottom: 1px solid #edf0e9; font-size: 14px; gap: 12px; }
+dd { margin: 0; color: #59675c; }
+.hint { color: #627064; font-size: 12px; line-height: 1.5; margin: 20px 0; }
+button { background: #183c32; color: white; font: inherit; font-size: 13px; border: 0; padding: 13px 18px; border-radius: 8px; cursor: pointer; }
+button:hover { background: #285444; }
+button:disabled { opacity: .6; cursor: wait; }
+button:focus-visible { outline: 3px solid #6a9a45; outline-offset: 4px; }
+.login-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; align-items: start; padding: 24px 0 40px; }
+.login-card { margin-top: 35px; }
+form { display: flex; flex-direction: column; gap: 10px; }
+label { font-size: 14px; font-weight: 600; margin-top: 10px; }
+input { font: inherit; width: 100%; min-height: 45px; border: 1px solid #aab9ae; background: white; border-radius: 8px; padding: 10px 12px; color: #18342f; }
+input:focus-visible { outline: 3px solid #6a9a45; outline-offset: 2px; }
+form button { margin-top: 14px; min-height: 45px; }
+.panel-heading { display: flex; justify-content: space-between; gap: 16px; align-items: center; padding: 32px 0; }
+.panel-heading h1 { font-size: clamp(30px, 5vw, 42px); letter-spacing: -1.5px; }
+.secondary { background: transparent; color: #183c32; border: 1px solid #7e9683; margin-left: 10px; }
+.secondary:hover { background: #e6eddf; }
+@media (max-width: 760px) { .login-layout { grid-template-columns: 1fr; gap: 0; } .login-card { margin-top: 0; } .panel-heading { align-items: flex-start; } dd { overflow-wrap: anywhere; text-align: right; } }
+.error { background: #fff3ea; padding: 12px; color: #8a3c16; border-radius: 8px; font-size: 14px; line-height: 1.5; }
+footer { display: flex; justify-content: space-between; gap: 16px; color: #687466; font-size: 12px; border-top: 1px solid #dce2d6; padding: 24px 0; }
+@media (max-width: 600px) { .intro { padding-top: 30px; } .status-card { padding: 22px; } .status-heading { align-items: flex-start; flex-direction: column; } footer { flex-direction: column; } }
