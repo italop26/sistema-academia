@@ -1,0 +1,12 @@
+{
+  "beat_worker_absence": {
+    "passed": true,
+    "at_utc": "2026-11-12T13:40:44.093879+00:00",
+    "students": 3,
+    "detections": 3,
+    "test_clock_accelerated": true,
+    "test_schedule_seconds": 1,
+    "normal_schedule_seconds": 300,
+    "threshold_hours": 240
+  }
+}

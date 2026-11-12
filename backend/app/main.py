@@ -11,8 +11,19 @@ from app.core.database import get_engine
 from app.core.errors import error_response, register_error_handlers
 from app.core.logging import configure_logging
 from app.core.redis import get_redis
+from app.modules.absence.routers import router as absence_router
+from app.modules.attendance.routers import router as attendance_router
+from app.modules.audit.routers import router as audit_router
 from app.modules.auth.routers import router as auth_router
+from app.modules.billing.routers import router as billing_router
+from app.modules.enrollments.routers import router as enrollments_router
 from app.modules.health.routers import router as health_router
+from app.modules.notifications.routers import router as notifications_router
+from app.modules.payments.routers import router as payments_router
+from app.modules.plans.routers import router as plans_router
+from app.modules.students.routers import router as students_router
+from app.modules.webhooks.routers import admin_router as webhook_admin_router
+from app.modules.webhooks.routers import router as webhook_router
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +66,7 @@ def create_app() -> FastAPI:
             )
             response = error_response(request, 500, "internal_error", "Erro interno do servidor.")
         response.headers["X-Request-ID"] = request.state.request_id
-        if request.url.path.startswith("/auth/"):
+        if request.url.path.startswith(("/auth/", "/admin/", "/webhooks/")):
             response.headers["Cache-Control"] = "no-store"
             response.headers["Pragma"] = "no-cache"
         logger.info(
@@ -80,6 +91,20 @@ def create_app() -> FastAPI:
     )
     app.include_router(health_router)
     app.include_router(auth_router)
+    for router in (
+        students_router,
+        attendance_router,
+        absence_router,
+        plans_router,
+        enrollments_router,
+        billing_router,
+        audit_router,
+        payments_router,
+        webhook_admin_router,
+        webhook_router,
+        notifications_router,
+    ):
+        app.include_router(router)
     return app
 
 

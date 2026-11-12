@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { fetchHealth } from '../api/health.js';
+import Management from './Management.jsx';
+import NotificationsPanel from './NotificationsPanel.jsx';
+import AttendancePanel from './AttendancePanel.jsx';
+import FollowupsPanel from './FollowupsPanel.jsx';
 
 export default function Dashboard({ user, session, apiUrl }) {
   const [health, setHealth] = useState(null);
@@ -31,6 +35,10 @@ export default function Dashboard({ user, session, apiUrl }) {
     <>
       <section className="panel-heading"><div><p className="eyebrow">ÁREA ADMINISTRATIVA</p><h1>Painel administrativo</h1><p className="description">Olá, {user.name}.</p></div><button className="secondary" onClick={() => session.logout()}>Sair</button></section>
       <section className="status-card" aria-label="Conta autenticada"><h2>Sua conta</h2><dl><div><dt>E-mail</dt><dd>{user.email}</dd></div><div><dt>Permissão</dt><dd>Administrador</dd></div></dl></section>
+      <Management session={session} />
+      <AttendancePanel session={session} />
+      <FollowupsPanel session={session} userId={user.id} />
+      <NotificationsPanel session={session} />
       <section className="status-card" aria-labelledby="status-title" aria-busy={loading}>
         <div className="status-heading"><h2 id="status-title">Status do sistema</h2><span className={`badge ${health?.status === 'ok' && !loading ? 'available' : ''}`} role="status">{loading ? 'Consultando…' : health?.status === 'ok' ? 'Sistema disponível' : 'Serviços indisponíveis'}</span></div>
         {error && <p className="error" role="alert">{error}</p>}

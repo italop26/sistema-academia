@@ -1,0 +1,48 @@
+{
+  "environment": "academia-business-tests",
+  "database": "SQLite descartável",
+  "client_timezone": "America/Fortaleza",
+  "real_messages_sent": false,
+  "checks": {
+    "beat_worker_end_to_end": {
+      "passed": true,
+      "at_utc": "2026-11-10T19:23:21.710115+00:00",
+      "reminder_id": "f889eb73-cd0e-44f8-abf0-3eaf2b19615b",
+      "test_schedule_seconds": [1, 2],
+      "production_schedule_seconds": [300, 60]
+    },
+    "redis_intent_persisted": {
+      "passed": true,
+      "at_utc": "2026-11-10T19:27:28.518613+00:00",
+      "reminder_id": "e7fe5b2c-2ddb-4127-895f-41097d53804a"
+    },
+    "real_redis_outage": {
+      "passed": true,
+      "at_utc": "2026-11-10T19:27:41.266017+00:00",
+      "no_send_attempt_consumed": true
+    },
+    "real_redis_recovery": {
+      "passed": true,
+      "at_utc": "2026-11-10T19:31:33.189305+00:00",
+      "reminder_id": "e7fe5b2c-2ddb-4127-895f-41097d53804a",
+      "test_backoff_accelerated": true
+    },
+    "worker_entered_transaction": {
+      "passed": true,
+      "at_utc": "2026-11-10T19:31:40.910530+00:00",
+      "reminder_id": "5adfddfe-64d5-463f-81cb-7fbbb513167c"
+    },
+    "worker_sigkill_rollback": {
+      "passed": true,
+      "at_utc": "2026-11-10T19:33:16.195815+00:00",
+      "no_partial_receipt": true
+    },
+    "worker_restart_recovered": {
+      "passed": true,
+      "at_utc": "2026-11-10T19:33:26.884165+00:00",
+      "reminder_id": "5adfddfe-64d5-463f-81cb-7fbbb513167c",
+      "stale_token_ignored": true,
+      "test_lease_accelerated": true
+    }
+  }
+}

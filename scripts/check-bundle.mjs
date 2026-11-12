@@ -6,7 +6,7 @@ for (const path of ['.env', '.env.validation']) {
   try {
     const env = await readFile(path, 'utf8');
     for (const line of env.split(/\r?\n/)) {
-      if (/^(POSTGRES_PASSWORD|REDIS_PASSWORD|JWT_SECRET_KEY)=/.test(line)) {
+      if (/^(POSTGRES_PASSWORD|REDIS_PASSWORD|JWT_SECRET_KEY|PIX_WEBHOOK_TEST_SECRET)=/.test(line)) {
         const value = line.slice(line.indexOf('=') + 1);
         if (value.length >= 12) secrets.push(value);
       }

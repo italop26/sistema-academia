@@ -34,6 +34,21 @@ export function createSession(api, {
     subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
     dispose() { clear(); listeners.clear(); },
     checkExpiration() { if (token && now() >= deadline) expire(); },
+    async request(path, options = {}) {
+      if (!token || state.status !== 'authenticated' || now() >= deadline) {
+        if (token && now() >= deadline) expire();
+        throw new Error('Entre novamente para continuar.');
+      }
+      const attempt = generation;
+      try {
+        const result = await api.request(path, { ...options, token });
+        if (attempt !== generation) throw new Error('A sessão foi encerrada.');
+        return result;
+      } catch (error) {
+        if (attempt === generation && (error.status === 401 || error.status === 403)) expire();
+        throw error;
+      }
+    },
     async login(email, password) {
       clear();
       const attempt = generation;

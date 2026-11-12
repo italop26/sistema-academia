@@ -27,10 +27,25 @@ def test_empty_password_is_rejected():
         Settings(postgres_password="", _env_file=None)
 
 
-def test_celery_has_no_business_schedule():
+def test_celery_registers_bounded_financial_schedule():
     from app.core.celery_app import celery_app
 
-    assert celery_app.conf.beat_schedule == {}
+    assert celery_app.conf.beat_schedule == {
+        "identify-absence": {"task": "absence.scan", "schedule": 300.0},
+        "identify-overdue": {"task": "notifications.scan_overdue", "schedule": 300.0},
+        "dispatch-reminders": {"task": "notifications.dispatch_pending", "schedule": 60.0},
+    }
+    assert "app.modules.notifications.tasks" in celery_app.conf.imports
+    assert "app.modules.absence.tasks" in celery_app.conf.imports
+    from app.modules.absence.tasks import identify_absence
+
+    assert identify_absence.acks_late and identify_absence.reject_on_worker_lost
+    assert identify_absence.max_retries == 3 and identify_absence.time_limit == 20
+    assert celery_app.conf.worker_prefetch_multiplier == 1
+    from app.modules.notifications.tasks import deliver_reminder
+
+    assert deliver_reminder.acks_late and deliver_reminder.reject_on_worker_lost
+    assert deliver_reminder.ignore_result and deliver_reminder.time_limit == 20
     assert celery_app.conf.accept_content == ["json"]
     assert celery_app.conf.broker_url.endswith("/0")
     assert celery_app.conf.result_backend.endswith("/1")

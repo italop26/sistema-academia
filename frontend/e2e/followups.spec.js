@@ -1,0 +1,61 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { expect, test } from '@playwright/test';
+
+const credentials = JSON.parse(readFileSync(process.env.E2E_CREDENTIALS, 'utf8'));
+
+test('fila de ausência permite acompanhar, encerrar e resolver pelo novo check-in', async ({ page, request }) => {
+  test.skip(process.env.ABSENCE_RUNTIME_TESTS !== '1', 'Exige o probe de ausência no SQLite descartável.');
+  const cases = JSON.parse(readFileSync(join(dirname(process.env.E2E_CREDENTIALS), 'absence-runtime-fixtures.json'), 'utf8'));
+  const login = await request.post('/api/auth/login', { data: { email: credentials.email, password: credentials.password } });
+  const headers = { Authorization: `Bearer ${(await login.json()).access_token}` };
+  await page.goto('/');
+  await page.getByLabel('E-mail', { exact: true }).fill(credentials.email);
+  await page.getByLabel('Senha', { exact: true }).fill(credentials.password);
+  await page.getByRole('button', { name: 'Entrar', exact: true }).click();
+  const panel = page.getByRole('region', { name: 'Acompanhamento de ausências', exact: true });
+  const rowFor = item => panel.locator('ul.record-list > li').filter({ hasText: item.name });
+  const row = rowFor(cases[0]);
+  await expect(row).toContainText('Pendente');
+  await row.getByRole('button', { name: 'Assumir acompanhamento', exact: true }).click();
+  await panel.getByLabel('Observação do acompanhamento').fill('Contato de retorno iniciado');
+  await panel.getByRole('button', { name: 'Confirmar acompanhamento', exact: true }).click();
+  await expect(panel.getByText('Acompanhamento atualizado com histórico.', { exact: true })).toBeVisible();
+  await panel.getByLabel('Situação do acompanhamento').selectOption('em_acompanhamento');
+  await expect(row).toContainText('Responsável: você');
+  await row.getByRole('button', { name: 'Histórico do acompanhamento', exact: true }).click();
+  await expect(panel.getByRole('region', { name: 'Histórico do acompanhamento', exact: true })).toContainText('Contato de retorno iniciado');
+  const attendance = page.getByRole('region', { name: 'Frequência dos alunos', exact: true });
+  await attendance.getByLabel('Aluno da frequência').selectOption(cases[0].student_id);
+  await attendance.getByRole('button', { name: 'Registrar presença', exact: true }).click();
+  await expect(attendance.getByText('Total de presenças: 1', { exact: true })).toBeVisible();
+  await panel.getByLabel('Situação do acompanhamento').selectOption('resolvido');
+  await expect(row).toContainText('Retorno registrado por check-in.');
+  await panel.getByLabel('Situação do acompanhamento').selectOption('pendente');
+  await rowFor(cases[1]).getByRole('button', { name: 'Encerrar acompanhamento', exact: true }).click();
+  await panel.getByLabel('Observação do acompanhamento').fill('Aluno optou por não prosseguir com o contato');
+  await panel.getByRole('button', { name: 'Confirmar acompanhamento', exact: true }).click();
+  await expect(panel.getByText('Acompanhamento atualizado com histórico.', { exact: true })).toBeVisible();
+  await panel.getByLabel('Situação do acompanhamento').selectOption('encerrado');
+  await expect(rowFor(cases[1])).toContainText('Encerrado');
+  await panel.getByLabel('Situação do acompanhamento').selectOption('pendente');
+  await rowFor(cases[2]).getByRole('button', { name: 'Resolver acompanhamento', exact: true }).click();
+  await panel.getByLabel('Observação do acompanhamento').fill('Contato realizado e situação resolvida');
+  await panel.getByRole('button', { name: 'Confirmar acompanhamento', exact: true }).click();
+  await expect(panel.getByText('Acompanhamento atualizado com histórico.', { exact: true })).toBeVisible();
+  await panel.getByLabel('Situação do acompanhamento').selectOption('resolvido');
+  await expect(rowFor(cases[2])).toContainText('Resolvido');
+  const scan = await request.post('/api/admin/absence/scan', { headers });
+  expect(scan.ok()).toBe(true);
+  const all = await request.get('/api/admin/absence/detections?limit=200', { headers });
+  const detections = (await all.json()).filter(item => cases.some(entry => entry.student_id === item.student_id));
+  expect(detections).toHaveLength(3);
+  expect(detections.every(item => ['resolvido', 'encerrado'].includes(item.status))).toBe(true);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(rowFor(cases[0])).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  if (process.env.E2E_ARTIFACT_DIR) {
+    await rowFor(cases[0]).scrollIntoViewIfNeeded();
+    await page.screenshot({ path: `${process.env.E2E_ARTIFACT_DIR}/followups-mobile.png` });
+  }
+});

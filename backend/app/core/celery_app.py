@@ -17,7 +17,19 @@ celery_app.conf.update(
     broker_connection_retry_on_startup=True,
     result_expires=3600,
     worker_hijack_root_logger=False,
-    beat_schedule={},
+    imports=("app.modules.notifications.tasks", "app.modules.absence.tasks"),
+    worker_prefetch_multiplier=1,
+    broker_connection_timeout=3,
+    broker_transport_options={
+        "visibility_timeout": 300,
+        "socket_connect_timeout": 2,
+        "socket_timeout": 2,
+    },
+    beat_schedule={
+        "identify-absence": {"task": "absence.scan", "schedule": 300.0},
+        "identify-overdue": {"task": "notifications.scan_overdue", "schedule": 300.0},
+        "dispatch-reminders": {"task": "notifications.dispatch_pending", "schedule": 60.0},
+    },
 )
 
 

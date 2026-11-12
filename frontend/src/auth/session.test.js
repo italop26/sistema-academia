@@ -2,6 +2,34 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createSession } from './session.js';
 
+test('requisições administrativas mantêm o token privado e expiram em 401', async () => {
+  let calls = 0;
+  const { session } = fixture({ request: async (path, options) => {
+    calls += 1;
+    assert.equal(options.token, 'secret-test-token');
+    if (calls === 2) throw Object.assign(new Error('expired'), { status: 401 });
+    return { path };
+  } });
+  await assert.rejects(session.request('/admin/students'), /Entre novamente/);
+  await session.login('admin@example.com', 'password');
+  assert.deepEqual(await session.request('/admin/students'), { path: '/admin/students' });
+  assert.equal(JSON.stringify(session.getState()).includes('secret-test-token'), false);
+  await assert.rejects(session.request('/admin/students'), /expired/);
+  assert.equal(session.getState().status, 'anonymous');
+  session.dispose();
+});
+
+test('resposta administrativa atrasada é descartada após logout', async () => {
+  let finish;
+  const { session } = fixture({ request: () => new Promise((resolve) => { finish = resolve; }) });
+  await session.login('admin@example.com', 'password');
+  const pending = session.request('/admin/monthly-fees');
+  await session.logout();
+  finish([{ status: 'paga' }]);
+  await assert.rejects(pending, /sessão foi encerrada/);
+  assert.equal(session.getState().status, 'anonymous');
+});
+
 function fixture(overrides = {}) {
   let time = 1000;
   let timer;

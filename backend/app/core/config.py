@@ -26,6 +26,25 @@ class Settings(BaseSettings):
     jwt_access_token_minutes: int = Field(default=15, ge=1, le=60)
     jwt_issuer: str = "academia-api"
     jwt_audience: str = "academia-client"
+    pix_simulator_enabled: bool = False
+    pix_webhook_test_secret: SecretStr | None = Field(default=None, min_length=32)
+    financial_automation_enabled: bool = False
+    notification_batch_size: int = Field(default=50, ge=1, le=200)
+    notification_dispatch_lease_seconds: int = Field(default=120, ge=30, le=600)
+    absence_tracking_enabled: bool = False
+    absence_batch_size: int = Field(default=50, ge=1, le=200)
+
+    @model_validator(mode="after")
+    def restrict_pix_simulator(self):
+        if self.app_env == "production" and self.pix_simulator_enabled:
+            raise ValueError("O simulador Pix não pode ser habilitado em produção")
+        if self.pix_webhook_test_secret and self.pix_webhook_test_secret in (
+            self.jwt_secret_key,
+            self.redis_password,
+            self.postgres_password,
+        ):
+            raise ValueError("O webhook de teste exige segredo exclusivo")
+        return self
 
     @field_validator("database_url_input", mode="before")
     @classmethod

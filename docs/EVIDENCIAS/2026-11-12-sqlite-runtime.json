@@ -1,0 +1,25 @@
+{
+  "beat_worker_end_to_end": {
+    "passed": true,
+    "at_utc": "2026-11-12T12:35:20.790695+00:00",
+    "reminder_id": "b1df35c7-09bb-464c-ae70-d10d4ad421f0",
+    "test_schedule_seconds": [
+      1,
+      2
+    ],
+    "production_schedule_seconds": [
+      300,
+      60
+    ]
+  },
+  "sqlite_bounded_load": {
+    "passed": true,
+    "at_utc": "2026-11-12T12:47:05.259126+00:00",
+    "fees": 120,
+    "concurrent_threads": 8,
+    "delivery_calls": 360,
+    "unique_receipts": 120,
+    "stale_duplicates": 240,
+    "elapsed_seconds": 9.217
+  }
+}

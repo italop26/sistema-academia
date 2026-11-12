@@ -1,0 +1,101 @@
+# Ambiente descartável, sem portas públicas e sem acesso aos volumes da aplicação.
+# Executar exclusivamente com: docker compose -p academia-business-tests -f compose.business-tests.yaml ...
+services:
+  redis:
+    image: redis:7-alpine
+    command: [redis-server, --save, "", --appendonly, "no", --requirepass, business-tests-only]
+    healthcheck:
+      test: [CMD, redis-cli, -a, business-tests-only, ping]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+  backend:
+    image: sistemadeacademia-tests:latest
+    environment: &business-test-env
+      APP_ENV: test
+      PYTHONPATH: /app:/app/tests
+      VALIDATION_ONLY: "1"
+      DATABASE_URL: sqlite+pysqlite:///./data/validation.db
+      REDIS_HOST: redis
+      REDIS_PASSWORD: business-tests-only
+      JWT_SECRET_KEY: isolated-business-tests-key-at-least-32-characters
+      PIX_SIMULATOR_ENABLED: "true"
+      PIX_WEBHOOK_TEST_SECRET: isolated-webhook-only-test-secret-12345678
+      FINANCIAL_AUTOMATION_ENABLED: "true"
+      ABSENCE_TRACKING_ENABLED: "true"
+      NOTIFICATION_DISPATCH_LEASE_SECONDS: "30"
+    volumes: &business-test-volumes
+      - ./backend:/app:ro
+      - test_data:/app/data
+    command: [sh, -c, "alembic upgrade head && python tests/seed_e2e.py && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+  worker:
+    image: sistemadeacademia-tests:latest
+    environment: *business-test-env
+    volumes: *business-test-volumes
+    init: true
+    command: [python, tests/notification_test_worker.py]
+    depends_on:
+      backend:
+        condition: service_healthy
+  scheduler:
+    image: sistemadeacademia-tests:latest
+    environment: *business-test-env
+    volumes: *business-test-volumes
+    init: true
+    command: [python, tests/notification_test_scheduler.py]
+    depends_on:
+      backend:
+        condition: service_healthy
+  automation-checks:
+    image: sistemadeacademia-tests:latest
+    environment: *business-test-env
+    volumes: *business-test-volumes
+    profiles: [tools]
+    command: [python, tests/notification_runtime_check.py, basic]
+  frontend:
+    image: academia-validation-e2e:latest
+    environment:
+      VITE_API_URL: /api
+      API_PROXY_TARGET: http://backend:8000
+    volumes:
+      - ./frontend/src:/app/src:ro
+      - ./frontend/index.html:/app/index.html:ro
+      - ./frontend/vite.config.js:/app/vite.config.js:ro
+    command: [npm, run, dev, --, --host, 0.0.0.0, --port, "5174"]
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://localhost:5174').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+  e2e:
+    image: academia-validation-e2e:latest
+    init: true
+    shm_size: 1gb
+    environment:
+      E2E_BASE_URL: http://frontend:5174
+      E2E_CREDENTIALS: /test-data/e2e-credentials.json
+      AUTOMATION_RUNTIME_TESTS: "1"
+      PIX_WEBHOOK_TEST_SECRET: isolated-webhook-only-test-secret-12345678
+    volumes:
+      - ./frontend/e2e:/app/e2e:ro
+      - ./frontend/playwright.config.js:/app/playwright.config.js:ro
+      - test_data:/test-data:ro
+    depends_on:
+      frontend:
+        condition: service_healthy
+networks:
+  default:
+    internal: true
+volumes:
+  test_data:

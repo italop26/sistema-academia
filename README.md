@@ -1,203 +1,164 @@
-# Gestão de academias e estúdios de Pilates
+# Academia/Pilates
 
-Monólito modular com FastAPI, React em **JavaScript** com Vite, SQLite ou PostgreSQL, SQLAlchemy, Alembic, Redis e Celery. Inclui o módulo inicial de usuários e autenticação; demais módulos de negócio ainda não foram implementados.
+Sistema administrativo para academias e estúdios de Pilates, com cadastros, matrículas, mensalidades, presença e acompanhamento de ausência. Construído como monólito modular com **FastAPI, SQLAlchemy, SQLite, Alembic, Redis, Celery e React com Vite em JavaScript**.
 
-## Executar com Docker
+Este README apresenta o projeto para o GitHub. O [README_VALIDACAO.md](README_VALIDACAO.md) explica o uso passo a passo, os comandos de terminal e os roteiros de validação por etapa.
 
-Requisitos: Docker Desktop com contêineres Linux e Docker Compose; Node.js 22.12+ ou 24 para gerar o ambiente. Execute na raiz:
+## Funcionalidades
 
-```sh
-node scripts/setup-env.mjs --sqlite
-docker compose up --build -d
-docker compose ps -a
-```
-
-O script gera os segredos ausentes e preserva as senhas existentes. `--sqlite` seleciona `DATABASE_URL=sqlite+pysqlite:///./data/academia.db` e cria `backend/data/` para uso local. No Docker, o arquivo fica no volume `sqlite_data`, compartilhado entre API e migrações. Para continuar com PostgreSQL, remova `DATABASE_URL` do `.env`; a configuração anterior foi preservada. Não compartilhe nem versione `.env`. Configure `JWT_SECRET_KEY` com pelo menos 32 caracteres aleatórios; o script gera 64 caracteres hexadecimais.
-
-| Endereço | Uso |
+| Módulo | Comportamento |
 | --- | --- |
-| http://localhost:5174 | Frontend |
-| http://localhost:8002/docs | Documentação interativa da API em desenvolvimento |
-| http://localhost:8002/health | Prontidão: verifica o banco selecionado e Redis |
-| http://localhost:8002/health/live | Processo da API ativo, sem depender de outros serviços |
+| Autenticação | Login administrativo, JWT em memória, expiração, permissões e logout com revogação no Redis |
+| Alunos e planos | Cadastros administrativos, desativação e histórico |
+| Matrículas | Vigência, preço contratado, vencimento e cancelamento |
+| Mensalidades | Geração por competência, baixa manual integral, cancelamento e histórico transacional |
+| Pix simulado | Cobrança de teste, webhook autenticado, validação e proteção contra quitação duplicada |
+| Lembretes financeiros | Identificação de vencidas, envio exclusivamente simulado, retries e acompanhamento |
+| Frequência | Uma presença diária por aluno, histórico individual, última visita e suspensão/retomada com motivo |
+| Ausência | Detecção de alunos elegíveis após 240 horas completas sem presença |
+| Acompanhamento | Fila com pendente, em acompanhamento, resolvido e encerrado; responsável, observações e histórico |
 
-As portas 5174 e 8002 separam a academia de outros projetos locais que usam 5173 e 8000. A publicação das portas fica em `compose.yaml`; no desenvolvimento sem Docker, o frontend usa `frontend/vite.config.js`. O Docker mantém a porta interna 8000 da API.
+Pix e mensagens externas não estão integrados a provedores reais. Não há portal do aluno, presença por aula ou emissão automática de novas mensalidades nesta versão.
 
-`/health` retorna HTTP 200 quando as duas dependências respondem e HTTP 503 quando alguma está indisponível:
+## Regras de frequência e ausência
 
-```json
-{"status":"ok","database":"ok","redis":"ok"}
-```
+O check-in usa o horário do servidor e a data de **America/Fortaleza**. Exige aluno ativo e matrícula pertencente ao aluno, vigente, ativa e sem suspensão. Repetições no mesmo dia conservam uma única presença; chaves de idempotência ficam persistidas. Não há lançamento retroativo ou exclusão de presença pela API.
 
-O Compose aguarda PostgreSQL e Redis, executa `alembic upgrade head` em um serviço temporário e inicia a aplicação. `migrate` terminar com código zero é esperado. Worker e scheduler usam a mesma imagem do backend. Portas ficam vinculadas somente a `127.0.0.1`; dados persistem em volumes Docker.
+A suspensão afeta a disponibilidade para frequência, preservando as regras de cobrança existentes. Seu início, retomada, responsável e motivo ficam registrados.
 
-A infraestrutura PostgreSQL foi mantida no Compose, inclusive suas dependências de inicialização. Com `DATABASE_URL` apontando para SQLite, a aplicação usa SQLite. Não há dois bancos de usuários. Dados de um banco não são transferidos automaticamente ao trocar a configuração.
+A ausência considera **240 horas transcorridas**, a partir da última presença ou do início da elegibilidade, respeitando a carência inicial da ativação. Alunos sem check-in também são considerados. Se todas as matrículas ficarem indisponíveis, a contagem reinicia após a retomada; uma matrícula disponível mantém a elegibilidade.
 
-## Usuários e autenticação
+Cada episódio gera no máximo um acompanhamento. Um novo check-in resolve o caso aberto na mesma transação da presença. Casos finalizados ficam no histórico e não são recriados durante o mesmo episódio. Perda de elegibilidade é reconciliada na próxima varredura.
 
-Depois das migrações, crie o administrador inicial em um terminal interativo:
-
-```sh
-docker compose run --rm --no-deps backend python -m app.modules.users.cli --name "Seu nome" --email "seu.email@exemplo.com"
-```
-
-A senha é solicitada duas vezes sem exibição e deve ter de 12 a 128 caracteres. Não há senha padrão, opção de senha na linha de comando ou cadastro público. O comando recusa um segundo administrador inicial, mesmo se o primeiro estiver inativo.
-
-| Método | Endpoint | Acesso |
-| --- | --- | --- |
-| POST | `/auth/login` | E-mail e senha em JSON; retorna JWT Bearer e validade em segundos |
-| GET | `/auth/me` | Header `Authorization: Bearer <token>`; retorna dados públicos do usuário ativo |
-| GET | `/auth/admin` | Exige usuário ativo com perfil administrador |
-| POST | `/auth/logout` | Revoga o JWT autenticado; retorna 204 |
-
-O corpo do login usa `email` e `password`. JWT expira em 15 minutos por padrão; a senha é armazenada como hash Argon2id. E-mail desconhecido, senha incorreta e usuário inativo recebem o mesmo erro 401. O React apresenta login e painel administrativo, com carregamento, erros, expiração e saída. Não há refresh token ou gerenciamento público de usuários.
-
-O frontend usa `VITE_API_URL=/api`. No desenvolvimento, o proxy Vite encaminha `/api` para `API_PROXY_TARGET` (no Docker, `http://backend:8000`; fora dele, `http://localhost:8002`). O navegador usa a mesma origem do frontend; nenhum hostname interno ou segredo precisa ser exposto no bundle.
-
-O token fica somente em memória e é perdido ao recarregar a página. `GET /auth/admin` exige administrador no servidor. `POST /auth/logout` retorna 204 e revoga o identificador do JWT no Redis até sua expiração. Se a revogação falhar, a interface limpa a sessão local e informa que a saída remota não pôde ser confirmada. Redis indisponível bloqueia consultas autenticadas com 503.
-
-Para repetir a validação completa em dados isolados, consulte [docs/VALIDACAO.md](docs/VALIDACAO.md).
-
-Veja [docs/AUTENTICACAO.md](docs/AUTENTICACAO.md) para contratos, permissões, configuração e testes.
-
-```sh
-docker compose logs --tail=100 backend worker scheduler
-docker compose stop
-docker compose start
-docker compose down
-```
-
-`down` preserva os volumes. Ao alterar senhas depois de inicializar PostgreSQL, atualize também as credenciais no banco: editar o `.env` não altera uma conta já persistida. Não remova volumes com dados que queira manter.
-
-## Organização e expansão
+## Arquitetura
 
 ```text
 backend/
   app/
-    main.py                 # composição da aplicação
-    core/                   # ambiente, banco, Redis, Celery, logs e erros
-    models/                 # Base SQLAlchemy
+    core/                 # configuração, sessões, segurança, Redis e Celery
+    models/               # Base e convenções SQLAlchemy
     modules/
-      health/
-        routers.py          # HTTP e dependências
-        services.py         # coordenação da verificação
-        repositories.py     # acesso ao banco
-        schemas.py          # contratos de entrada e saída
-      users/                # model, repository, service, schemas e CLI de bootstrap
-      auth/                 # router, service, schemas e dependências de autenticação
-  migrations/               # Alembic, incluindo a criação de users
-  tests/                    # testes isolados e de integração
+      auth/ users/ health/
+      students/ plans/ enrollments/
+      billing/ payments/ webhooks/
+      attendance/         # check-in, histórico e última visita
+      absence/            # detecção e acompanhamento administrativo
+      audit/              # eventos transacionais
+  migrations/             # revisões Alembic
+  tests/                  # regras, concorrência, migrações e integração
 frontend/
-  src/
-    api/                    # cliente HTTP e testes
-    App.jsx                 # tela inicial de conectividade
-scripts/setup-env.mjs
-compose.yaml
+  src/api/                # transporte autenticado e utilitários
+  src/auth/               # sessão em memória
+  src/components/         # login e painéis administrativos
+  e2e/                    # testes Chromium com API real
+docs/                     # contratos, relatórios e evidências
+scripts/                  # preparação de ambiente e verificações
 ```
 
-Para um futuro módulo, crie `app/modules/<nome>/` com `routers.py`, `services.py`, `repositories.py`, `models.py` e `schemas.py`. Routers validam HTTP e chamam services; services coordenam regras; repositories recebem a sessão SQLAlchemy e acessam os dados. Models representam persistência e schemas representam contratos. Importe os models em `migrations/env.py` para que Alembic conheça o metadata e registre o router em `main.py`. A autenticação reutiliza `UserRepository` do módulo de usuários; não duplica o acesso a esses dados.
+Routers validam HTTP e permissões; services coordenam regras e transações; repositories concentram consultas; models representam a persistência. Auditoria e alteração de negócio são confirmadas juntas. SQLite usa chaves estrangeiras e `BEGIN IMMEDIATE` nas escritas.
 
-Use transações explícitas no service (`with session.begin()`) quando implementar escritas. O backend não cria tabelas automaticamente e não executa migrações a cada requisição. Não há abstrações de CRUD ou entidades de exemplo.
+O banco usado neste projeto é **SQLite**. A compatibilidade anterior com PostgreSQL foi preservada, mas não é necessária para validar estas etapas. O Compose original ainda inicia seu serviço PostgreSQL auxiliar; a aplicação usa o banco definido por `DATABASE_URL`.
 
-### Migrações
+## Execução local com Docker
 
-A revisão `20261109_01` cria `users` com e-mail único e restrição de perfil. Para aplicar a revisão atual sem iniciar os outros serviços:
+Requisitos: Docker Desktop com contêineres Linux, Docker Compose e Node.js compatível com o projeto. Na raiz:
 
-```sh
-docker compose run --rm --no-deps migrate
-```
-
-Para futuras alterações de models:
-
-```sh
-docker compose run --rm --no-deps --volume ./backend/migrations:/app/migrations backend alembic revision --autogenerate -m "criar tabelas do modulo"
-docker compose run --rm --no-deps migrate
-docker compose run --rm --no-deps backend alembic current
-```
-
-Revise a migração gerada antes de aplicá-la. O volume no primeiro comando salva a revisão na pasta local. Se estiver usando PostgreSQL, ele deve estar em execução. Nunca execute downgrade em dados importantes sem revisar o que será removido.
-
-### Automações
-
-`app/core/celery_app.py` prepara o broker Redis no banco lógico 0 e resultados no banco lógico 1. Serialização é JSON, fuso UTC e resultados expiram em uma hora. O Beat não possui tarefas da aplicação agendadas. Mantenha uma única instância do scheduler para evitar disparos duplicados.
-
-Ao criar automações, adicione um `tasks.py` ao módulo e registre seu import em `celery_app.conf.imports`; então configure `beat_schedule`. Tarefas futuras devem ser idempotentes e ter políticas de timeout e retry adequadas à operação. O armazenamento local do Beat em `/tmp` é suficiente para esta estrutura sem agendas de negócio.
-
-## Desenvolvimento sem contêineres para a aplicação
-
-Python 3.12+ e Node.js 22.12+ ou 24. Para SQLite local, mantenha Redis no Docker:
-
-```sh
+```powershell
 node scripts/setup-env.mjs --sqlite
-docker compose up -d redis
+docker compose -p sistemadeacademia up --build -d
+docker compose -p sistemadeacademia ps -a
 ```
 
-Backend, a partir de `backend/`:
+O script prepara o `.env`, gera segredos ausentes e preserva os existentes. O Compose aplica as migrações antes de iniciar a API. **Em uma instalação com dados, revise as migrações e faça backup antes de atualizar.** A autorização desta entrega não incluiu atualizar o banco principal com as novas etapas de frequência.
 
-```sh
-python -m venv .venv
-# PowerShell: .venv\Scripts\Activate.ps1
-# Linux/macOS: source .venv/bin/activate
-python -m pip install -e ".[dev]"
-alembic upgrade head
-python -m app.modules.users.cli --name "Seu nome" --email "seu.email@exemplo.com"
-uvicorn app.main:app --reload --port 8002
+| Endereço | Finalidade |
+| --- | --- |
+| http://localhost:5174 | Interface administrativa |
+| http://localhost:8002/docs | Contratos da API em desenvolvimento |
+| http://localhost:8002/health | Prontidão de banco e Redis |
+| http://localhost:8002/health/live | Processo da API |
+
+Após as migrações, crie o administrador inicial em terminal interativo:
+
+```powershell
+docker compose -p sistemadeacademia run --rm --no-deps backend python -m app.modules.users.cli --name "Seu nome" --email "seu.email@exemplo.com"
 ```
 
-Frontend, em outro terminal a partir de `frontend/`:
+A senha é solicitada duas vezes, sem exibição, com 12 a 128 caracteres. Não há credencial padrão nem cadastro público. A CLI recusa criar outro administrador inicial se já existir um.
 
-```sh
-npm ci
-npm run dev
-```
+## Configuração
 
-No Windows com restrição de scripts PowerShell, use `npm.cmd` no lugar de `npm`. Para o backend sem ativação do virtualenv, use diretamente `.venv\Scripts\python.exe`. Execute worker e Beat pelo Docker, inclusive no Windows:
+Variáveis documentadas em [.env.example](.env.example):
 
-```sh
-docker compose up -d worker scheduler
-```
+| Variável | Uso |
+| --- | --- |
+| `DATABASE_URL` | Para SQLite local: `sqlite+pysqlite:///./data/academia.db` |
+| `JWT_SECRET_KEY` | Assinatura de autenticação; segredo aleatório de pelo menos 32 caracteres |
+| `REDIS_PASSWORD` | Autenticação da infraestrutura Redis |
+| `VITE_API_URL` | `/api`; proxy do frontend para a API |
+| `PIX_SIMULATOR_ENABLED` | Simulador de teste; desativado por padrão e bloqueado em produção |
+| `FINANCIAL_AUTOMATION_ENABLED` | Lembretes financeiros simulados; desativado por padrão |
+| `ABSENCE_TRACKING_ENABLED` | Detecção de ausência; desativada por padrão |
+| `ABSENCE_BATCH_SIZE` | Alunos por lote; padrão 50, intervalo 1–200 |
 
-Variáveis são lidas do `.env` da raiz quando os comandos Python são executados em `backend/`, e do ambiente do processo nos contêineres. O Compose troca os hosts por `postgres` e `redis`. O frontend recebe somente a URL pública `VITE_API_URL`; nunca coloque segredos em variáveis `VITE_*`.
+Nunca versione `.env`, credenciais, backups ou bancos. O frontend recebe somente configuração pública; segredos não devem usar o prefixo `VITE_`.
 
-## Testes e verificações
+## Tarefas e recuperação
 
-Testes isolados do backend e análise estática, sem exigir Python no host:
+O Beat identifica mensalidades vencidas a cada cinco minutos, publica lembretes a cada minuto e verifica ausência a cada cinco minutos. Cada funcionalidade respeita sua flag de ativação. Mantenha uma instância do scheduler.
 
-```sh
-docker compose build tests
-docker compose run --rm --no-deps tests pytest -m "not integration" -q
-docker compose run --rm --no-deps tests ruff check app migrations tests
-docker compose run --rm --no-deps tests ruff format --check app migrations tests
-docker compose run --rm --no-deps tests pip check
-```
+Redis transporta tarefas; o SQLite guarda intenções, detecções, progresso, tentativas e histórico. A varredura de ausência usa cursor e reserva temporária, revalida cada aluno e confirma seu progresso junto da detecção. Falhas transitórias têm até três retries por execução, com esperas de 60/300/900 segundos. Execuções periódicas posteriores permitem nova recuperação; indisponibilidade pode atrasar a identificação.
 
-Integração com o banco configurado, Redis e worker reais:
+A fila administrativa é persistida no banco. Os resultados temporários do Celery e o ping do Redis não comprovam conclusão de uma operação de negócio.
 
-```sh
-docker compose up --build -d
-docker compose run --rm tests
-```
+## Principais endpoints
 
-A integração verifica o banco configurado e executa uma tarefa nativa de manutenção do Celery, confirmando o resultado no Redis. Se executar `pytest` localmente sem `RUN_INTEGRATION_TESTS=1`, esses dois testes de infraestrutura são pulados. Os testes de autenticação já executam migrações e operações reais em arquivos SQLite temporários e independentes do banco da aplicação.
+Rotas `/admin/*` exigem usuário ativo com perfil administrador.
 
-Frontend, a partir de `frontend/`:
+| Método | Caminho | Finalidade |
+| --- | --- | --- |
+| POST | `/auth/login` | Entrar |
+| POST | `/auth/logout` | Revogar a sessão |
+| GET/POST | `/admin/students`, `/admin/plans`, `/admin/enrollments` | Cadastros e contratos |
+| POST | `/admin/attendance/check-ins` | Presença idempotente |
+| GET | `/admin/attendance/students/{id}` | Última visita e total |
+| GET | `/admin/attendance/students/{id}/check-ins` | Histórico paginado |
+| POST | `/admin/enrollments/{id}/suspend` | Suspender frequência |
+| POST | `/admin/enrollments/{id}/suspensions/{period_id}/resume` | Retomar um período específico |
+| GET | `/admin/absence/detections` | Fila e histórico de casos, com filtro e paginação |
+| POST | `/admin/absence/detections/{id}/status` | Alterar estado com observação e versão esperada |
+| GET | `/admin/absence/status`, `/admin/absence/runs` | Estado e execuções da detecção |
+| POST | `/admin/absence/scan` | Verificação administrativa, respeitando reserva e backoff |
+| GET | `/admin/history` | Eventos de auditoria |
 
-```sh
+Os schemas completos ficam no OpenAPI da aplicação. O transporte usa respostas de erro padronizadas e impede cache das rotas administrativas.
+
+## Desenvolvimento e testes
+
+O [guia de validação](README_VALIDACAO.md) contém os comandos de ambiente virtual, instalação do Alembic, desenvolvimento sem contêineres e testes descartáveis das três etapas.
+
+No frontend:
+
+```powershell
+Set-Location frontend
 npm ci
 npm test
 npm run build
-npm audit
 ```
 
-Na raiz, `docker compose config --quiet` valida a composição sem imprimir segredos. Evite compartilhar a saída de `docker compose config` sem `--quiet`, pois ela pode conter valores do ambiente.
+Os testes backend usam arquivos SQLite temporários; o ambiente de navegador possui rede e volume próprios, sem portas públicas e sem os volumes principais. As verificações incluem autenticação, integridade, transações, concorrência, idempotência, datas, migrações e fluxos administrativos reais.
 
-## Configuração e limites atuais
+Validação registrada em **12/11/2026**: **271 testes de backend** (269 de regressão e 2 de infraestrutura), **24 JavaScript** e **14 Chromium** passaram. Build, Ruff, formatação, ensaio de migrações e detecção pelo Beat/worker reais passaram. Consulte o [relatório de fechamento](docs/RELATORIO_FREQUENCIA_ETAPA_3.md) para evidências e limitações.
 
-- CORS aceita somente as origens explícitas de `CORS_ORIGINS` (array JSON). Métodos atuais: GET, POST e OPTIONS; headers incluem Content-Type e Authorization. Cookies entre origens estão desabilitados.
-- Logs JSON incluem identificador de requisição, método, caminho, status e duração. Não registram corpos, query strings ou credenciais. `X-Request-ID` permite localizar a requisição. Erros inesperados retornam mensagem genérica e registram a classe da exceção.
-- Erros HTTP e de validação usam `{"error":{"code":"...","message":"...","request_id":"..."}}`; falhas de prontidão usam o contrato próprio de `/health`.
-- A autenticação exige usuário ativo e token não revogado. A dependência `require_admin` protege a rota administrativa utilizada pelo React. O painel mostra a conta e a conectividade; o ping do Redis não comprova atividade do worker ou do scheduler.
-- O Compose é para desenvolvimento local; frontend usa o servidor Vite. Antes de publicar, configure build estático e servidor de arquivos, TLS, segredos do ambiente de destino, backup, observabilidade e acesso à infraestrutura. `APP_ENV=production` desabilita a documentação interativa.
-- Dependências JavaScript têm lockfile; dependências Python têm faixas limitadas no `pyproject.toml`. Um lock de deploy e uma pipeline de CI podem ser adicionados conforme o ambiente de entrega for definido.
+## Documentação e limites
 
-O relatório da criação e validação fica em [RELATORIO.md](RELATORIO.md).
+- [Guia de uso e validação](README_VALIDACAO.md)
+- [Autenticação](docs/AUTENTICACAO.md)
+- [Matrículas e mensalidades](docs/MATRICULAS_MENSALIDADES.md)
+- [Pix de teste](docs/PIX_SIMULADO.md)
+- [Automações financeiras](docs/AUTOMACAO_FINANCEIRA.md)
+- [Relatório de frequência — etapa 1](docs/RELATORIO_FREQUENCIA_ETAPA_1.md)
+- [Relatório de ausência — etapa 2](docs/RELATORIO_FREQUENCIA_ETAPA_2.md)
+- [Acompanhamento e fechamento — etapa 3](docs/RELATORIO_FREQUENCIA_ETAPA_3.md)
+
+O Compose é destinado a desenvolvimento local e usa Vite para servir o frontend. Publicação na internet, TLS, backup recorrente, retenção e monitoramento de produção exigem preparação própria. SQLite aceita um escritor por vez; os testes locais não definem capacidade máxima. Histórico protegido pela API e por transações não é inviolável contra acesso SQL privilegiado.
